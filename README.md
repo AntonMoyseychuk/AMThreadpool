@@ -1,0 +1,2 @@
+# AMThreadpool
+C++ threadpool implementation
