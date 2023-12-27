@@ -1,0 +1,12 @@
+project(amthreadpool)
+
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+file(GLOB_RECURSE AM_THREADPOOL_SRC CONFIGURE_DEPENDS 
+    ${PROJECT_SOURCE_DIR}/*.cpp)
+
+add_library(${PROJECT_NAME} STATIC ${AM_THREADPOOL_SRC})
+
+target_include_directories(${PROJECT_NAME} 
+    PUBLIC ${PROJECT_SOURCE_DIR}/include)
