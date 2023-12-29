@@ -2,7 +2,7 @@
 
 namespace amthp
 {
-    threadpool::~threadpool() noexcept
+    threadpool::~threadpool()
     {
         terminate();
     }
@@ -24,6 +24,7 @@ namespace amthp
     void threadpool::terminate() noexcept
     {
         m_running.store(false);
+
         for (std::thread& worker : m_workers) {
             m_tasks_cv.notify_all();
             
@@ -33,22 +34,22 @@ namespace amthp
         }
     }
 
-    void threadpool::wait_all() const noexcept
+    void threadpool::wait(task_id task_id) const noexcept
     {
-        unique_lock_mtx lock(m_tasks_mtx);
-
-        m_tasks_cv.wait(lock, [this]() -> bool {
-            threadpool::unique_lock_mtx task_lock(m_completed_task_ids_mtx);
-            return m_tasks.empty() && m_last_task_id == m_completed_task_ids.size(); 
+        std::unique_lock<std::mutex> lock(m_completed_task_ids_mtx);
+    
+        m_completed_task_ids_cv.wait(lock, [this, task_id]()->bool {
+            return m_completed_task_ids.find(task_id) != m_completed_task_ids.end();
         });
     }
 
-    void threadpool::wait(task_id task_id) const noexcept
+    void threadpool::wait_all() const noexcept
     {
-        unique_lock_mtx lock(m_completed_task_ids_mtx);
+        std::unique_lock<std::mutex> lock(m_completed_task_ids_mtx);
     
-        m_completed_task_ids_cv.wait(lock, [this, task_id]()->bool {
-            return m_completed_task_ids.find(task_id) != m_completed_task_ids.end(); 
+        m_completed_task_ids_cv.wait(lock, [this]() -> bool {
+            std::lock_guard<std::mutex> task_lock(m_tasks_mtx);
+            return m_tasks.empty() && m_last_task_id == m_completed_task_ids.size();
         });
     }
 
@@ -61,7 +62,7 @@ namespace amthp
     void threadpool::run_worker()
     {
         while (m_running) {
-            unique_lock_mtx lock(m_tasks_mtx);
+            std::unique_lock<std::mutex> lock(m_tasks_mtx);
             m_tasks_cv.wait(lock, [this]() -> bool { return !m_tasks.empty() || !m_running; });
 
             if (!m_tasks.empty()) {
@@ -71,7 +72,7 @@ namespace amthp
                 
                 task.first.get();
 
-                unique_lock_mtx completed_lock(m_completed_task_ids_mtx);
+                std::lock_guard<std::mutex> completed_lock(m_completed_task_ids_mtx);
                 m_completed_task_ids.insert(task.second);
                 m_completed_task_ids_cv.notify_all();
             }

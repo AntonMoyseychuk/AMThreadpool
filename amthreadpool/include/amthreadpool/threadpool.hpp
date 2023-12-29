@@ -26,8 +26,8 @@ namespace amthp
         template <typename Func, typename... Args>
         task_id add_task(const Func& func, Args&&... args) noexcept;
 
-        void wait_all() const noexcept;
         void wait(task_id task_id) const noexcept;
+        void wait_all() const noexcept;
 
         bool task_finished(task_id task_id) const noexcept;
 
@@ -39,12 +39,11 @@ namespace amthp
 
     private:
         threadpool() = default;
-        ~threadpool() noexcept;
+        ~threadpool();
 
         void run_worker();
 
     private:
-        using unique_lock_mtx = std::unique_lock<std::mutex>;
         using task = std::pair<std::future<void>, task_id>;
 
     private:
@@ -66,8 +65,8 @@ namespace amthp
     inline threadpool::task_id threadpool::add_task(const Func &func, Args &&...args) noexcept
     {
         task_id id = m_last_task_id++;
-
-        unique_lock_mtx tasks_lock(m_tasks_mtx);
+        
+        std::lock_guard<std::mutex> tasks_lock(m_tasks_mtx);
         m_tasks.emplace(std::async(std::launch::deferred, func, std::forward<Args>(args)...), id);
 
         m_tasks_cv.notify_one();
