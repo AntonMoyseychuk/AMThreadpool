@@ -15,6 +15,10 @@ namespace amthp
 
     void threadpool::init(uint64_t workers_count) noexcept
     {
+        std::lock_guard<std::mutex> lock(m_workers_mtx);
+
+        m_running = true;
+
         m_workers.reserve(workers_count);
         for (uint64_t i = 0; i < workers_count; ++i) {
             m_workers.emplace_back(&threadpool::run_worker, this);
@@ -23,15 +27,18 @@ namespace amthp
 
     void threadpool::terminate() noexcept
     {
-        m_running.store(false);
+        std::lock_guard<std::mutex> lock(m_workers_mtx);
 
+        m_running = false;
+
+        m_tasks_cv.notify_all();
         for (std::thread& worker : m_workers) {
-            m_tasks_cv.notify_all();
-            
             if (worker.joinable()) {
                 worker.join();
             }
         }
+
+        m_workers.resize(0);
     }
 
     void threadpool::wait(task_id task_id) const noexcept
@@ -59,11 +66,20 @@ namespace amthp
         return m_completed_task_ids.find(task_id) != m_completed_task_ids.end();
     }
 
+    bool threadpool::is_running() const noexcept
+    {
+        return m_running;
+    }
+
     void threadpool::run_worker()
     {
-        while (m_running) {
+        while (true) {
             std::unique_lock<std::mutex> lock(m_tasks_mtx);
             m_tasks_cv.wait(lock, [this]() -> bool { return !m_tasks.empty() || !m_running; });
+
+            if (!m_running) {
+                break;
+            }
 
             if (!m_tasks.empty()) {
                 auto task = std::move(m_tasks.front());

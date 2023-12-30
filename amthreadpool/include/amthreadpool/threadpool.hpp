@@ -23,13 +23,23 @@ namespace amthp
         void init(uint64_t workers_count) noexcept;
         void terminate() noexcept;
 
-        template <typename Func, typename... Args>
-        task_id add_task(const Func& func, Args&&... args) noexcept;
-
         void wait(task_id task_id) const noexcept;
         void wait_all() const noexcept;
 
         bool task_finished(task_id task_id) const noexcept;
+        bool is_running() const noexcept;
+
+        template <typename Func, typename... Args>
+        task_id add_task(const Func& func, Args&&... args) noexcept
+        {
+            task_id id = m_last_task_id++;
+        
+            std::lock_guard<std::mutex> tasks_lock(m_tasks_mtx);
+            m_tasks.emplace(std::async(std::launch::deferred, func, std::forward<Args>(args)...), id);
+
+            m_tasks_cv.notify_one();
+            return id;
+        }
 
         threadpool(threadpool&& thp) noexcept = default;
         threadpool& operator=(threadpool&& thp) noexcept = default;
@@ -48,6 +58,7 @@ namespace amthp
 
     private:
         std::vector<std::thread> m_workers;
+        mutable std::mutex m_workers_mtx;
         
         std::queue<task> m_tasks;
         mutable std::mutex m_tasks_mtx;
@@ -57,19 +68,7 @@ namespace amthp
         mutable std::mutex m_completed_task_ids_mtx;
         mutable std::condition_variable m_completed_task_ids_cv;
 
-        std::atomic_bool m_running = true;
+        std::atomic_bool m_running = false;
         std::atomic<task_id> m_last_task_id = 0;
     };
-    
-    template <typename Func, typename... Args>
-    inline threadpool::task_id threadpool::add_task(const Func &func, Args &&...args) noexcept
-    {
-        task_id id = m_last_task_id++;
-        
-        std::lock_guard<std::mutex> tasks_lock(m_tasks_mtx);
-        m_tasks.emplace(std::async(std::launch::deferred, func, std::forward<Args>(args)...), id);
-
-        m_tasks_cv.notify_one();
-        return id;
-    }
 }
